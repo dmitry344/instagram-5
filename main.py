@@ -34,9 +34,15 @@ def week_of_month(dt):
 def find_posts(driver, user_name):
     print("Listing posts of @{}...".format(user_name))
     driver.get("https://www.instagram.com/" + user_name)
+    try:
+        title = driver.find_element_by_css_selector(".-vDIg h1").text
+        print(title)
+    except Exception as ee:
+        print(ee)
+        pass
     imgLinks = []
     c = 0
-    while len(imgLinks) < 48:
+    while len(imgLinks) < 36:
         try:
             c = c + 1
             if c > 50:
@@ -72,27 +78,46 @@ def download_photos(driver, user_name, download_path, logger,  total_number=12):
 
             # If page has many photos
             try:
-
+                # 0: image, 1: video
+                download_type = None
                 img_xp = read_xpath('get_source_link', "image")
-                if not explicit_wait(driver, "VOEL", [img_xp, "XPath"], logger, 5, notify=False):
-                    continue
-                tags = driver.find_elements_by_xpath(img_xp)
-
-                for i in range(len(tags)):
-                    img_link = tags[i].get_attribute("srcset").split(",")[0]
-                    if img_link == '':
+                video_xp = read_xpath('get_source_link', "video")
+                if explicit_wait(driver, "VOEL", [img_xp, "XPath"], logger, 5, notify=False):
+                    tags = driver.find_elements_by_xpath(img_xp)
+                    download_type = 0
+                else:
+                    if explicit_wait(driver, "VOEL", [video_xp, "XPath"], logger, 5, notify=False):
+                        tags = driver.find_elements_by_xpath(video_xp)
+                        download_type = 1
+                    else:
                         continue
-                    img_link = img_link.split(" ")[0]
-                    file_name = str(downloaded_number+1) + " " + user_name + '.jpg'
-                    # Download photos
-
-                    path = os.path.join(download_path, file_name)
-                    urlretrieve(img_link, path)
-                    print("> " + str(downloaded_number+1) + " / " + str(total_number) + "  downloaded...")
-                    downloaded_number += 1
-                    if downloaded_number == total_number:
-                        print("$ Download Completed.")
-                        return downloaded_number
+                if download_type == 0:
+                    for i in range(len(tags)):
+                        link = tags[i].get_attribute("srcset").split(",")[0]
+                        if link == '':
+                            continue
+                        link = link.split(" ")[0]
+                        file_name = str(downloaded_number+1) + " @" + user_name + '.jpg'
+                        path = os.path.join(download_path, file_name)
+                        urlretrieve(link, path)
+                        print("> " + str(downloaded_number+1) + " / " + str(total_number) + "  downloaded jpg")
+                        downloaded_number += 1
+                        if downloaded_number == total_number:
+                            print("$ Download Completed. username: " + '@'+user_name)
+                            return downloaded_number
+                elif download_type == 1:
+                    for i in range(len(tags)):
+                        link = tags[i].get_attribute("src")
+                        if link == '':
+                            continue
+                        file_name = str(downloaded_number + 1) + " @" + user_name + '.mp4'
+                        path = os.path.join(download_path, file_name)
+                        urlretrieve(link, path)
+                        print("> " + str(downloaded_number + 1) + " / " + str(total_number) + "  downloaded video")
+                        downloaded_number += 1
+                        if downloaded_number == total_number:
+                            print("$ Download Completed. username: " + '@' + user_name)
+                            return downloaded_number
 
             # If page has single photo
             except Exception as e:
@@ -124,7 +149,7 @@ def create_user_folder(drive, folderName, parentID=None):
     sub_folder_id = None
     sub_folder_title = None
     for exist_folder in exist_folder_list:
-        if exist_folder['title'] == folderName:
+        if exist_folder['title'] == '@'+folderName:
             sub_folder_id = exist_folder['id']
             sub_folder_title = exist_folder['title']
             exist_file_list = drive.ListFile({'q': "'%s' in parents and trashed=false" % sub_folder_id}).GetList()
@@ -136,7 +161,7 @@ def create_user_folder(drive, folderName, parentID=None):
             break
     # Create folder
     if not sub_folder_id:
-        body = {'title': folderName, 'mimeType': 'application/vnd.google-apps.folder'}
+        body = {'title': '@'+folderName, 'mimeType': 'application/vnd.google-apps.folder'}
         if parentID:
             body['parents'] = [{'id': parentID}]
         folder = drive.CreateFile(body)
@@ -300,7 +325,8 @@ if __name__ == '__main__':
             try:
                 for user_number in range(len(work_df)):
                     user_name = work_df.iloc[user_number, 0].split('@')[1]
-                    download_path = str(current_year) + '/' +str(current_month)+ '/' + current_week + '/' + work_df.iloc[user_number, 3] + "/" + user_name
+                    download_path = './images'
+                    # download_path = str(current_year) + '/' +str(current_month)+ '/' + current_week + '/' + work_df.iloc[user_number, 3] + "/" + user_name
                     if not os.path.exists(download_path):
                         os.makedirs(download_path)
                     else:
@@ -312,6 +338,7 @@ if __name__ == '__main__':
                     user_folder_id = create_user_folder(drive, user_name, category_folder_id)
                     download_photos(driver, user_name, download_path, logger, 12)
                     upload_2_google(drive, download_path, user_folder_id)
+                    print('completed {}/{}'.format(user_number+1, len(work_df)))
             except Exception as e:
                 print(e)
                 pass
